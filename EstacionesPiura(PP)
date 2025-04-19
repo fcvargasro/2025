@@ -42,4 +42,49 @@ districts_centroids = gpd.GeoDataFrame(
     crs="EPSG:4326"
 )
 
-# === 6. Calcular estación
+# === 6. Calcular estación más cercana y distancia ===
+def get_nearest_station_info(district_point):
+    distances = stations_gdf.geometry.distance(district_point)
+    nearest_idx = distances.idxmin()
+    nearest_station = stations_gdf.loc[nearest_idx, 'stations']
+    station_geom = stations_gdf.loc[nearest_idx].geometry
+    dist_km = geodesic(
+        (district_point.y, district_point.x),
+        (station_geom.y, station_geom.x)
+    ).kilometers
+    return pd.Series([nearest_station, round(dist_km, 2)])
+
+districts_centroids[['NearestStation', 'Distance_km']] = districts_centroids.geometry.apply(
+    get_nearest_station_info
+)
+
+# === 7. Unir la info al GeoDataFrame de distritos ===
+districts = districts.merge(
+    districts_centroids[['DISTRITO', 'NearestStation', 'Distance_km']],
+    on='DISTRITO'
+)
+
+# === 8. Guardar resultados en CSV ===
+districts[['DISTRITO', 'NearestStation', 'Distance_km']].to_csv(
+    r"C:\Users\FC.VargasRo\Documents\DG\Distritos_Estaciones_Asignadas.csv",
+    index=False
+)
+print(" Resultado guardado con estaciones y distancias en kilómetros.")
+
+# === 9. Visualización  ===
+fig, ax = plt.subplots(figsize=(10, 10))
+districts.plot(ax=ax, color='lightgrey', edgecolor='black')
+stations_gdf.plot(ax=ax, color='red', markersize=30, label='Estaciones')
+districts_centroids.plot(ax=ax, color='blue', markersize=10, label='Centroides')
+
+for idx, row in districts_centroids.iterrows():
+    nearest_station_geom = stations_gdf[stations_gdf['stations'] == row['NearestStation']].geometry.values[0]
+    ax.plot(
+        [row.geometry.x, nearest_station_geom.x],
+        [row.geometry.y, nearest_station_geom.y],
+        color='gray', linestyle='--', linewidth=0.5
+    )
+
+plt.legend()
+plt.title("Distritos de Piura asociados a su estación más cercana")
+plt.show()
