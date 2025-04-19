@@ -1,0 +1,45 @@
+import geopandas as gpd
+import pandas as pd
+import matplotlib.pyplot as plt
+from shapely.geometry import Point
+from geopy.distance import geodesic
+import re
+
+# === 1. Leer shapefile de distritos y filtrar solo PIURA ===
+districts = gpd.read_file(r"C:\Users\FC.VargasRo\Documents\DG\DISTRITOS.shp")
+districts = districts.to_crs("EPSG:4326")
+districts = districts[districts['DEPARTAMEN'] == 'PIURA'].copy()
+
+# === 2. Leer CSV de estaciones ===
+stations_df = pd.read_csv(r"C:\Users\FC.VargasRo\Documents\DG\PIURASTMTH.csv")
+
+# === 3. Convertir coordenadas DMS a decimal ===
+def dms_to_dd(dms_str):
+    dms_str = dms_str.strip().replace("′", "'").replace("”", '"').replace("’", "'")
+    match = re.match(r"(-?\d+)°(\d+)'([\d.]+)\"", dms_str)
+    if match:
+        degrees, minutes, seconds = map(float, match.groups())
+        dd = abs(degrees) + minutes / 60 + seconds / 3600
+        return -dd if "-" in dms_str else dd
+    else:
+        raise ValueError(f"Formato inválido: {dms_str}")
+
+stations_df['Longitude'] = stations_df['Longitude'].apply(dms_to_dd)
+stations_df['Latitude'] = stations_df['Latitude'].apply(dms_to_dd)
+
+# === 4. Crear GeoDataFrame de estaciones ===
+stations_gdf = gpd.GeoDataFrame(
+    stations_df,
+    geometry=gpd.points_from_xy(stations_df['Longitude'], stations_df['Latitude']),
+    crs="EPSG:4326"
+)
+
+# === 5. Calcular centroides de distritos ===
+districts['centroid'] = districts.geometry.centroid
+districts_centroids = gpd.GeoDataFrame(
+    districts[['DISTRITO', 'centroid']],
+    geometry=districts['centroid'],
+    crs="EPSG:4326"
+)
+
+# === 6. Calcular estación
